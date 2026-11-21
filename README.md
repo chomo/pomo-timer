@@ -1,0 +1,3 @@
+# pomo-timer
+
+Pomodoro timer.
