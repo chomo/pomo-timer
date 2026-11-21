@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:,">
+<title>ポモドーロタイマー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f1ea; --surface:#fffdf8; --surface2:#ece7db; --ink:#211d16; --ink2:#6d6656;
+  --line:#ddd5c3; --focus:#c93a2e; --focus-ink:#a92c22; --short:#17705c; --long:#2b5ea7;
+  --accent:var(--focus); --btn-ink:#fff; --shadow:0 10px 30px rgba(60,45,20,.10);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#16140f; --surface:#201d16; --surface2:#2a261c; --ink:#f0ead9; --ink2:#a89e86;
+    --line:#3a3527; --focus:#e05a4c; --focus-ink:#f08376; --short:#3fae94; --long:#6d9bd8;
+    --shadow:0 10px 30px rgba(0,0,0,.4); color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", sans-serif;
+  min-height:100dvh; display:flex; flex-direction:column; align-items:center;
+  padding:20px 16px calc(28px + env(safe-area-inset-bottom));
+}
+button{font-family:inherit; cursor:pointer; min-height:44px}
+.wrap{width:100%; max-width:520px; display:flex; flex-direction:column; gap:18px}
+.topbar{display:flex; justify-content:space-between; align-items:center; gap:8px}
+.phase-label{font-weight:900; font-size:20px; letter-spacing:.04em}
+.phase-label small{display:block; font-weight:500; font-size:12px; color:var(--ink2); letter-spacing:.08em}
+.icon-btns{display:flex; gap:8px}
+.icon-btn{
+  border:1px solid var(--line); background:var(--surface); color:var(--ink);
+  border-radius:10px; padding:0 14px; font-size:14px; font-weight:700;
+}
+.cycles{display:flex; align-items:center; gap:10px; justify-content:center}
+.dots{display:flex; gap:7px}
+.dot{width:13px; height:13px; border-radius:50%; border:2px solid var(--ink2); background:transparent}
+.dot.filled{background:var(--accent); border-color:var(--accent)}
+.dot.current{background:var(--surface2); border-color:var(--accent)}
+.cycles span{font-size:13px; color:var(--ink2); font-weight:700}
+.ring-zone{display:flex; flex-direction:column; align-items:center; gap:6px; padding:8px 0 0}
+.ring-wrap{position:relative; width:min(300px,78vw); aspect-ratio:1}
+.ring-wrap svg{width:100%; height:100%; transform:rotate(-90deg); display:block}
+.ring-bg{fill:none; stroke:var(--surface2); stroke-width:10}
+.ring-fg{fill:none; stroke:var(--accent); stroke-width:10; stroke-linecap:round; transition:stroke-dashoffset .3s linear, stroke .3s}
+.ring-center{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px}
+.time{font-family:"IBM Plex Mono", monospace; font-size:clamp(56px,17vw,76px); font-weight:600; line-height:1; font-variant-numeric:tabular-nums}
+.status-text{font-size:14px; color:var(--ink2); font-weight:700; min-height:20px}
+body.flash .ring-wrap{animation:flash .5s ease 3}
+@keyframes flash{50%{opacity:.25}}
+@media (prefers-reduced-motion: reduce){ body.flash .ring-wrap{animation:none} .ring-fg{transition:none} }
+.controls{display:flex; flex-direction:column; align-items:center; gap:10px}
+.main-btn{
+  width:100%; max-width:320px; border:none; border-radius:14px; padding:16px;
+  background:var(--accent); color:var(--btn-ink); font-size:19px; font-weight:900; letter-spacing:.06em;
+  box-shadow:var(--shadow);
+}
+.sub-row{display:flex; gap:10px; justify-content:center; min-height:44px}
+.sub-btn{
+  border:1px solid var(--line); background:var(--surface); color:var(--ink);
+  border-radius:12px; padding:0 20px; font-size:15px; font-weight:700;
+}
+.sub-btn.danger{color:var(--focus-ink); border-color:var(--focus)}
+.sub-btn[hidden]{display:none}
+.summary{
+  background:var(--surface); border:1px solid var(--line); border-radius:14px;
+  display:grid; grid-template-columns:1fr 1fr 1fr; overflow:hidden;
+}
+.summary div{padding:14px 8px; text-align:center}
+.summary div + div{border-left:1px solid var(--line)}
+.summary b{display:block; font-family:"IBM Plex Mono", monospace; font-size:24px; font-weight:600}
+.summary span{font-size:12px; color:var(--ink2); font-weight:700}
+.task-row{display:flex; gap:8px}
+.task-row input{
+  flex:1; min-height:44px; border:1px solid var(--line); border-radius:10px;
+  background:var(--surface); color:var(--ink); padding:0 12px; font-size:15px; font-family:inherit;
+}
+dialog{
+  border:1px solid var(--line); background:var(--surface); color:var(--ink);
+  border-radius:16px; padding:0; width:min(440px, calc(100vw - 24px)); max-height:88dvh;
+}
+dialog::backdrop{background:rgba(20,16,8,.45)}
+.dlg-body{padding:20px; overflow-y:auto; max-height:88dvh}
+.dlg-body h2{margin:0 0 4px; font-size:18px; font-weight:900}
+.dlg-body p.note{margin:0 0 14px; font-size:12.5px; color:var(--ink2); line-height:1.6}
+.field{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--line)}
+.field label{font-size:14.5px; font-weight:700}
+.field label small{display:block; font-weight:500; color:var(--ink2); font-size:12px}
+.field input[type=number]{
+  width:84px; min-height:44px; border:1px solid var(--line); border-radius:10px;
+  background:var(--bg); color:var(--ink); font-size:16px; text-align:center; font-family:"IBM Plex Mono", monospace;
+}
+.field input[type=checkbox]{width:24px; height:24px; accent-color:var(--focus)}
+.err{color:var(--focus-ink); font-size:13px; font-weight:700; min-height:18px; margin:8px 0 0}
+.dlg-actions{display:flex; gap:10px; margin-top:14px}
+.dlg-actions button{flex:1; border-radius:12px; font-size:15px; font-weight:900; padding:12px}
+.save-btn{background:var(--focus); color:#fff; border:none}
+.cancel-btn{background:var(--surface); color:var(--ink); border:1px solid var(--line)}
+.hist-list{list-style:none; margin:0; padding:0}
+.hist-list li{display:flex; justify-content:space-between; gap:10px; padding:11px 0; border-top:1px solid var(--line); font-size:14px}
+.hist-list .h-phase{font-weight:900}
+.hist-list .h-meta{color:var(--ink2); font-size:12.5px; text-align:right}
+.badge{font-size:11px; font-weight:900; padding:2px 8px; border-radius:99px; border:1px solid var(--line)}
+.badge.done{color:var(--short); border-color:var(--short)}
+.badge.stop{color:var(--focus-ink); border-color:var(--focus)}
+.empty{color:var(--ink2); font-size:14px; padding:16px 0 4px; text-align:center}
+.spec{font-size:12px; color:var(--ink2); line-height:1.7; border-top:1px dashed var(--line); padding-top:12px}
+.spec summary{min-height:36px; display:flex; align-items:center; font-weight:700; cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="phase-label"><span id="phaseName">集中</span><small id="phaseSub">FOCUS ・ 25分</small></div>
+    <div class="icon-btns">
+      <button class="icon-btn" id="openHistory" type="button">履歴</button>
+      <button class="icon-btn" id="openSettings" type="button">設定</button>
+    </div>
+  </div>
+
+  <div class="cycles" aria-label="サイクル進捗">
+    <div class="dots" id="dots"></div>
+    <span id="cycleText">0 / 4 回</span>
+  </div>
+
+  <div class="ring-zone">
+    <div class="ring-wrap">
+      <svg viewBox="0 0 200 200" aria-hidden="true">
+        <circle class="ring-bg" cx="100" cy="100" r="90"></circle>
+        <circle class="ring-fg" id="ringFg" cx="100" cy="100" r="90"></circle>
+      </svg>
+      <div class="ring-center">
+        <div class="time" id="timeText" role="timer" aria-live="off">25:00</div>
+        <div class="status-text" id="statusText" aria-live="polite">待機中</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="main-btn" id="mainBtn" type="button">開始</button>
+    <div class="sub-row">
+      <button class="sub-btn danger" id="interruptBtn" type="button" hidden>中断</button>
+      <button class="sub-btn" id="skipBtn" type="button" hidden>次へ進む</button>
+      <button class="sub-btn" id="resetBtn" type="button" hidden>リセット</button>
+    </div>
+  </div>
+
+  <div class="task-row">
+    <input type="text" id="taskName" placeholder="作業名（任意）" maxlength="60" autocomplete="off">
+  </div>
+
+  <section class="summary" aria-label="今日のサマリ">
+    <div><b id="sumFocus">0</b><span>集中の完走</span></div>
+    <div><b id="sumMinutes">0</b><span>集中合計（分）</span></div>
+    <div><b id="sumStop">0</b><span>中断</span></div>
+  </section>
+
+  <details class="spec">
+    <summary>仕様メモ（DDD）</summary>
+    集約 PomodoroSession が状態遷移と不変条件を管理。残時間は endsAt − 現在時刻 で算出（R2）。一時停止は endsAt を後ろへずらす（R3）。サイクルは集中の完走時のみ進む（R4〜R6）。設定変更は次のセッションから適用（R7）。中断は履歴に残るがサイクルに数えない（R8）。集計は端末のローカル日付（R9）。記録はこのページを開いている間のみ保持されます。
+  </details>
+</div>
+
+<dialog id="settingsDlg">
+  <form method="dialog" class="dlg-body" id="settingsForm">
+    <h2>設定</h2>
+    <p class="note">変更は次のセッションから適用されます。進行中の残時間は変わりません。</p>
+    <div class="field"><label for="cfgFocus">集中<small>5〜120分</small></label><input type="number" id="cfgFocus" min="5" max="120" step="1"></div>
+    <div class="field"><label for="cfgShort">短休憩<small>1〜30分</small></label><input type="number" id="cfgShort" min="1" max="30" step="1"></div>
+    <div class="field"><label for="cfgLong">長休憩<small>5〜60分</small></label><input type="number" id="cfgLong" min="5" max="60" step="1"></div>
+    <div class="field"><label for="cfgCycles">長休憩までの回数<small>2〜8回</small></label><input type="number" id="cfgCycles" min="2" max="8" step="1"></div>
+    <div class="field"><label for="cfgAutoBreak">休憩を自動開始</label><input type="checkbox" id="cfgAutoBreak"></div>
+    <div class="field"><label for="cfgAutoFocus">集中を自動開始</label><input type="checkbox" id="cfgAutoFocus"></div>
+    <div class="field"><label for="cfgSound">完了音</label><input type="checkbox" id="cfgSound"></div>
+    <div class="field"><label for="cfgNotify">ブラウザ通知</label><input type="checkbox" id="cfgNotify"></div>
+    <p class="err" id="cfgErr"></p>
+    <div class="dlg-actions">
+      <button type="button" class="cancel-btn" id="cfgCancel">キャンセル</button>
+      <button type="submit" class="save-btn" id="cfgSave">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="historyDlg">
+  <div class="dlg-body">
+    <h2>今日の履歴</h2>
+    <p class="note" id="histDate"></p>
+    <ul class="hist-list" id="histList"></ul>
+    <p class="empty" id="histEmpty">まだ記録がありません。</p>
+    <div class="dlg-actions">
+      <button type="button" class="cancel-btn" id="histClose">閉じる</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+const Phase = { FOCUS: "Focus", SHORT: "ShortBreak", LONG: "LongBreak" };
+const Status = { IDLE: "Idle", RUNNING: "Running", PAUSED: "Paused", COMPLETED: "Completed", INTERRUPTED: "Interrupted" };
+const PHASE_META = {
+  Focus:      { label: "集中",   en: "FOCUS",       color: "var(--focus)" },
+  ShortBreak: { label: "短休憩", en: "SHORT BREAK", color: "var(--short)" },
+  LongBreak:  { label: "長休憩", en: "LONG BREAK",  color: "var(--long)" }
+};
+const RANGES = { focus: [5, 120], shortBreak: [1, 30], longBreak: [5, 60], cycles: [2, 8] };
+
+function createConfig(o) {
+  const c = Object.assign({ focusMin: 25, shortMin: 5, longMin: 15, cyclesBeforeLongBreak: 4, autoStartBreak: true, autoStartFocus: false, sound: true, notify: false }, o || {});
+  const ok =
+    c.focusMin >= RANGES.focus[0] && c.focusMin <= RANGES.focus[1] &&
+    c.shortMin >= RANGES.shortBreak[0] && c.shortMin <= RANGES.shortBreak[1] &&
+    c.longMin >= RANGES.longBreak[0] && c.longMin <= RANGES.longBreak[1] &&
+    c.cyclesBeforeLongBreak >= RANGES.cycles[0] && c.cyclesBeforeLongBreak <= RANGES.cycles[1];
+  if (!ok) return null;
+  return Object.freeze(c);
+}
+function durationSecFor(config, phase) {
+  if (phase === Phase.FOCUS) return config.focusMin * 60;
+  if (phase === Phase.SHORT) return config.shortMin * 60;
+  return config.longMin * 60;
+}
+function nextPhaseAfter(completedPhase, cycleCount, config) {
+  if (completedPhase === Phase.FOCUS) {
+    return cycleCount >= config.cyclesBeforeLongBreak ? Phase.LONG : Phase.SHORT;
+  }
+  return Phase.FOCUS;
+}
+
+let sessionSeq = 0;
+class PomodoroSession {
+  constructor(phase, plannedSec, cyclePosition, taskName) {
+    this.id = "s" + (++sessionSeq) + "-" + Date.now().toString(36);
+    this.phase = phase;
+    this.status = Status.RUNNING;
+    this.plannedDurationSec = plannedSec;
+    this.startedAt = Date.now();
+    this.endsAt = this.startedAt + plannedSec * 1000;
+    this.pausedAt = null;
+    this.pausedTotalMs = 0;
+    this.cyclePosition = cyclePosition;
+    this.taskName = taskName || "";
+  }
+  remainingMs(now) { return Math.max(0, this.endsAt - now); }
+  pause(now) {
+    if (this.status !== Status.RUNNING) return false;
+    this.status = Status.PAUSED; this.pausedAt = now; return true;
+  }
+  resume(now) {
+    if (this.status !== Status.PAUSED) return false;
+    const delta = now - this.pausedAt;
+    this.endsAt += delta; this.pausedTotalMs += delta; this.pausedAt = null;
+    this.status = Status.RUNNING; return true;
+  }
+  elapsedSec(now) {
+    const end = this.status === Status.PAUSED ? this.pausedAt : now;
+    return Math.max(0, Math.round((end - this.startedAt - this.pausedTotalMs) / 1000));
+  }
+}
+
+const state = {
+  config: createConfig(),
+  status: Status.IDLE,
+  idlePhase: Phase.FOCUS,
+  session: null,
+  cycleCount: 0,
+  nextPhase: Phase.FOCUS,
+  history: []
+};
+
+const $ = id => document.getElementById(id);
+const els = {
+  phaseName: $("phaseName"), phaseSub: $("phaseSub"), dots: $("dots"), cycleText: $("cycleText"),
+  ringFg: $("ringFg"), timeText: $("timeText"), statusText: $("statusText"),
+  mainBtn: $("mainBtn"), interruptBtn: $("interruptBtn"), skipBtn: $("skipBtn"), resetBtn: $("resetBtn"),
+  taskName: $("taskName"), sumFocus: $("sumFocus"), sumMinutes: $("sumMinutes"), sumStop: $("sumStop")
+};
+const CIRC = 2 * Math.PI * 90;
+els.ringFg.style.strokeDasharray = CIRC;
+els.ringFg.style.strokeDashoffset = 0;
+
+function todayKey(d) {
+  d = d || new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function fmt(sec) {
+  sec = Math.max(0, Math.ceil(sec));
+  return String(Math.floor(sec / 60)).padStart(2, "0") + ":" + String(sec % 60).padStart(2, "0");
+}
+function currentPhase() {
+  if (state.session) return state.session.phase;
+  if (state.status === Status.COMPLETED) return state.nextPhase;
+  return state.idlePhase;
+}
+function plannedSecNow() {
+  if (state.session) return state.session.plannedDurationSec;
+  return durationSecFor(state.config, currentPhase());
+}
+function remainingSecNow() {
+  if (state.session && state.session.status === Status.RUNNING) return state.session.remainingMs(Date.now()) / 1000;
+  if (state.session && state.session.status === Status.PAUSED) return state.session.remainingMs(state.session.pausedAt) / 1000;
+  if (state.status === Status.COMPLETED) return 0;
+  return plannedSecNow();
+}
+
+function render() {
+  const phase = currentPhase();
+  const meta = PHASE_META[phase];
+  document.documentElement.style.setProperty("--accent", getComputedStyle(document.documentElement).getPropertyValue(phase === Phase.FOCUS ? "--focus" : phase === Phase.SHORT ? "--short" : "--long"));
+  els.phaseName.textContent = meta.label;
+  els.phaseSub.textContent = meta.en + " ・ " + Math.round(plannedSecNow() / 60) + "分";
+  const total = state.config.cyclesBeforeLongBreak;
+  els.dots.innerHTML = "";
+  for (let i = 0; i < total; i++) {
+    const d = document.createElement("span");
+    d.className = "dot" + (i < state.cycleCount ? " filled" : (i === state.cycleCount && state.session && state.session.phase === Phase.FOCUS ? " current" : ""));
+    els.dots.appendChild(d);
+  }
+  els.cycleText.textContent = state.cycleCount + " / " + total + " 回";
+  const planned = plannedSecNow(), remain = remainingSecNow();
+  const ratio = planned > 0 ? remain / planned : 0;
+  els.ringFg.style.strokeDashoffset = CIRC * (1 - Math.min(1, Math.max(0, ratio)));
+  els.timeText.textContent = fmt(remain);
+  document.title = fmt(remain) + " " + meta.label + "｜ポモドーロタイマー";
+  const st = state.session ? state.session.status : state.status;
+  els.statusText.textContent =
+    st === Status.RUNNING ? "進行中" :
+    st === Status.PAUSED ? "一時停止中" :
+    st === Status.COMPLETED ? "完了 — 次は" + PHASE_META[state.nextPhase].label :
+    "待機中";
+  els.mainBtn.textContent =
+    st === Status.RUNNING ? "一時停止" :
+    st === Status.PAUSED ? "再開" :
+    st === Status.COMPLETED ? PHASE_META[state.nextPhase].label + "を開始" :
+    "開始";
+  els.interruptBtn.hidden = !(st === Status.RUNNING || st === Status.PAUSED);
+  els.skipBtn.hidden = st !== Status.COMPLETED;
+  els.resetBtn.hidden = !(st === Status.PAUSED);
+  els.taskName.disabled = !!state.session;
+  renderSummary();
+}
+function renderSummary() {
+  const key = todayKey();
+  const todays = state.history.filter(r => r.dateKey === key);
+  const done = todays.filter(r => r.phase === Phase.FOCUS && r.result === "Completed");
+  els.sumFocus.textContent = done.length;
+  els.sumMinutes.textContent = done.reduce((a, r) => a + Math.round(r.plannedDurationSec / 60), 0);
+  els.sumStop.textContent = todays.filter(r => r.result === "Interrupted").length;
+}
+function record(session, result, endedAt) {
+  state.history.unshift({
+    sessionId: session.id, phase: session.phase, result: result,
+    startedAt: session.startedAt, endedAt: endedAt,
+    plannedDurationSec: session.plannedDurationSec,
+    elapsedSec: session.elapsedSec(endedAt),
+    taskName: session.taskName, dateKey: todayKey(new Date(session.startedAt))
+  });
+}
+
+let audioCtx = null;
+function beep() {
+  if (!state.config.sound) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    [0, 0.28, 0.56].forEach((t, i) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = "sine"; o.frequency.value = i === 2 ? 1174 : 880;
+      g.gain.setValueAtTime(0.0001, audioCtx.currentTime + t);
+      g.gain.exponentialRampToValueAtTime(0.22, audioCtx.currentTime + t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + t + 0.24);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(audioCtx.currentTime + t); o.stop(audioCtx.currentTime + t + 0.26);
+    });
+  } catch (e) {}
+}
+function notifyDone(phase) {
+  document.body.classList.remove("flash"); void document.body.offsetWidth; document.body.classList.add("flash");
+  if (state.config.notify && "Notification" in window && Notification.permission === "granted") {
+    try { new Notification("ポモドーロタイマー", { body: PHASE_META[phase].label + "が完了しました" }); } catch (e) {}
+  }
+  if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+}
+
+function startSession(phase) {
+  const planned = durationSecFor(state.config, phase);
+  const pos = phase === Phase.FOCUS ? state.cycleCount + 1 : state.cycleCount;
+  state.session = new PomodoroSession(phase, planned, pos, els.taskName.value.trim());
+  state.status = Status.RUNNING;
+  render();
+}
+function completeSession() {
+  const s = state.session; if (!s) return;
+  const endedAt = s.endsAt;
+  s.status = Status.COMPLETED;
+  record(s, "Completed", endedAt);
+  if (s.phase === Phase.FOCUS) state.cycleCount += 1;
+  state.nextPhase = nextPhaseAfter(s.phase, state.cycleCount, state.config);
+  if (s.phase === Phase.LONG) state.cycleCount = 0;
+  state.session = null;
+  state.status = Status.COMPLETED;
+  beep(); notifyDone(s.phase);
+  render();
+  const auto = state.nextPhase === Phase.FOCUS ? state.config.autoStartFocus : state.config.autoStartBreak;
+  if (auto) setTimeout(() => { if (state.status === Status.COMPLETED) startSession(state.nextPhase); }, 1200);
+}
+function interruptSession() {
+  const s = state.session; if (!s) return;
+  record(s, "Interrupted", Date.now());
+  state.session = null; state.status = Status.IDLE; state.idlePhase = Phase.FOCUS;
+  render();
+}
+function resetToIdle() {
+  state.session = null; state.status = Status.IDLE; state.idlePhase = Phase.FOCUS;
+  render();
+}
+
+els.mainBtn.addEventListener("click", () => {
+  const s = state.session;
+  if (s && s.status === Status.RUNNING) { s.pause(Date.now()); render(); return; }
+  if (s && s.status === Status.PAUSED) { s.resume(Date.now()); render(); return; }
+  if (state.status === Status.COMPLETED) { startSession(state.nextPhase); return; }
+  startSession(state.idlePhase);
+});
+els.interruptBtn.addEventListener("click", interruptSession);
+els.skipBtn.addEventListener("click", () => { if (state.status === Status.COMPLETED) startSession(state.nextPhase); });
+els.resetBtn.addEventListener("click", resetToIdle);
+document.addEventListener("keydown", e => {
+  if (e.code === "Space" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && !document.querySelector("dialog[open]")) {
+    e.preventDefault(); els.mainBtn.click();
+  }
+});
+
+setInterval(() => {
+  const s = state.session;
+  if (s && s.status === Status.RUNNING && Date.now() >= s.endsAt) { completeSession(); return; }
+  if (s) render();
+}, 250);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });
+
+const settingsDlg = $("settingsDlg"), historyDlg = $("historyDlg");
+$("openSettings").addEventListener("click", () => {
+  $("cfgFocus").value = state.config.focusMin;
+  $("cfgShort").value = state.config.shortMin;
+  $("cfgLong").value = state.config.longMin;
+  $("cfgCycles").value = state.config.cyclesBeforeLongBreak;
+  $("cfgAutoBreak").checked = state.config.autoStartBreak;
+  $("cfgAutoFocus").checked = state.config.autoStartFocus;
+  $("cfgSound").checked = state.config.sound;
+  $("cfgNotify").checked = state.config.notify;
+  $("cfgErr").textContent = "";
+  settingsDlg.showModal();
+});
+$("cfgCancel").addEventListener("click", () => settingsDlg.close());
+$("settingsForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const next = createConfig({
+    focusMin: Number($("cfgFocus").value), shortMin: Number($("cfgShort").value),
+    longMin: Number($("cfgLong").value), cyclesBeforeLongBreak: Number($("cfgCycles").value),
+    autoStartBreak: $("cfgAutoBreak").checked, autoStartFocus: $("cfgAutoFocus").checked,
+    sound: $("cfgSound").checked, notify: $("cfgNotify").checked
+  });
+  if (!next) {
+    $("cfgErr").textContent = "範囲外の値があります。集中5〜120分、短休憩1〜30分、長休憩5〜60分、回数2〜8で入力してください。";
+    return;
+  }
+  state.config = next;
+  if (state.cycleCount > next.cyclesBeforeLongBreak) state.cycleCount = next.cyclesBeforeLongBreak;
+  if (next.notify && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
+  settingsDlg.close(); render();
+});
+$("openHistory").addEventListener("click", () => {
+  const key = todayKey();
+  const todays = state.history.filter(r => r.dateKey === key);
+  $("histDate").textContent = new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
+  const ul = $("histList"); ul.innerHTML = "";
+  todays.forEach(r => {
+    const li = document.createElement("li");
+    const left = document.createElement("div");
+    const ph = document.createElement("span"); ph.className = "h-phase"; ph.textContent = PHASE_META[r.phase].label;
+    const badge = document.createElement("span"); badge.className = "badge " + (r.result === "Completed" ? "done" : "stop");
+    badge.textContent = r.result === "Completed" ? "完走" : "中断";
+    left.append(ph, document.createTextNode(" "), badge);
+    if (r.taskName) { const t = document.createElement("div"); t.textContent = r.taskName; t.style.fontSize = "12.5px"; t.style.color = "var(--ink2)"; left.appendChild(t); }
+    const meta = document.createElement("div"); meta.className = "h-meta";
+    meta.textContent = new Date(r.startedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }) + " 開始 ・ " + Math.floor(r.elapsedSec / 60) + "分" + (r.elapsedSec % 60 ? (r.elapsedSec % 60) + "秒" : "");
+    li.append(left, meta); ul.appendChild(li);
+  });
+  $("histEmpty").style.display = todays.length ? "none" : "block";
+  historyDlg.showModal();
+});
+$("histClose").addEventListener("click", () => historyDlg.close());
+
+render();
+</script>
+</body>
+</html>
